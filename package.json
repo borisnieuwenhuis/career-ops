@@ -15,7 +15,9 @@
     "rollback": "node update-system.mjs rollback",
     "liveness": "node check-liveness.mjs",
     "scan": "node scan.mjs",
-    "gemini:eval": "node gemini-eval.mjs"
+    "gemini:eval": "node gemini-eval.mjs",
+    "panel": "node tools/evaluate-panel.mjs",
+    "panel:test": "node --test tools/test/"
   },
   "keywords": [
     "ai",
@@ -32,6 +34,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.90.0",
     "@google/generative-ai": "^0.21.0",
     "dotenv": "^16.4.5",
     "js-yaml": "^4.1.1",
