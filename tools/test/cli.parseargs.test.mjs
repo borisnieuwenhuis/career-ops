@@ -24,3 +24,8 @@ test('parseCliArgs honors --record-fixture', () => {
   const a = parseCliArgs(['--report', 'r.md', '--record-fixture', 'f.json']);
   assert.equal(a.recordFixture, 'f.json');
 });
+
+test('parseCliArgs honors --record-fixture-dir', () => {
+  const a = parseCliArgs(['--report', 'r.md', '--record-fixture-dir', 'fixtures/']);
+  assert.equal(a.recordFixtureDir, 'fixtures/');
+});

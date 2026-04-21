@@ -22,6 +22,15 @@ import { buildPanelRecord, appendJsonl } from './lib/metrics.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
+function makeRecordHook(dir, name) {
+  if (!dir) return undefined;
+  return (resp) => {
+    const path = join(dir, `${name}.json`);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify(resp, null, 2));
+  };
+}
+
 export function parseCliArgs(argv) {
   const { values } = parseArgs({
     args: argv,
@@ -30,6 +39,7 @@ export function parseCliArgs(argv) {
       model: { type: 'string', default: 'claude-sonnet-4-6' },
       'dry-run': { type: 'boolean', default: false },
       'record-fixture': { type: 'string' },
+      'record-fixture-dir': { type: 'string' },
       'no-cache': { type: 'boolean', default: false },
       help: { type: 'boolean', default: false },
     },
@@ -47,6 +57,7 @@ export function parseCliArgs(argv) {
     model: values.model,
     dryRun: values['dry-run'],
     recordFixture: values['record-fixture'],
+    recordFixtureDir: values['record-fixture-dir'],
     useCache: !values['no-cache'],
   };
 }
@@ -62,6 +73,7 @@ FLAGS
   --model <name>          Default: claude-sonnet-4-6
   --dry-run               Build the prompt, print it, skip API call.
   --record-fixture <p>    Write raw Anthropic response JSON to <p>.
+  --record-fixture-dir <dir>  Record all three persona responses to <dir>/{recruiter,hiring_manager,exec}.json.
   --no-cache              Disable prompt caching.
   --help
 
@@ -111,22 +123,31 @@ async function main() {
 
   const client = createClient({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const recruiter = await runRecruiter(
-    client,
-    { cv, report, profile: null },
-    {
-      model: args.model,
-      useCache: args.useCache,
-      onRawResponse: args.recordFixture
-        ? (resp) => {
-            mkdirSync(dirname(args.recordFixture), { recursive: true });
-            writeFileSync(args.recordFixture, JSON.stringify(resp, null, 2));
-          }
-        : undefined,
-    },
-  );
-  const hm = await runHiringManager();
-  const br = await runBarRaiser();
+  const commonInputs = { cv, report, profile: null };
+  const commonOpts = {
+    model: args.model,
+    useCache: args.useCache,
+  };
+
+  const recruiterHook = args.recordFixture
+    ? (resp) => {
+        mkdirSync(dirname(args.recordFixture), { recursive: true });
+        writeFileSync(args.recordFixture, JSON.stringify(resp, null, 2));
+      }
+    : makeRecordHook(args.recordFixtureDir, 'recruiter');
+
+  const recruiter = await runRecruiter(client, commonInputs, {
+    ...commonOpts,
+    onRawResponse: recruiterHook,
+  });
+  const hm = await runHiringManager(client, commonInputs, {
+    ...commonOpts,
+    onRawResponse: makeRecordHook(args.recordFixtureDir, 'hiring_manager'),
+  });
+  const br = await runBarRaiser(client, commonInputs, {
+    ...commonOpts,
+    onRawResponse: makeRecordHook(args.recordFixtureDir, 'exec'),
+  });
 
   const aggRes = aggregate(recruiter.verdict, hm.verdict, br.verdict);
 
@@ -151,13 +172,17 @@ async function main() {
   );
   appendJsonl(outPath, record);
 
-  process.stdout.write(
-    `\nVerdict: ${aggRes.verdict} (${aggRes.one_line})\n` +
-    `Recruiter: ${recruiter.verdict.decision} (${recruiter.verdict.kill_reason ?? 'no kill reason'})\n` +
-    `Cost: $${recruiter.metrics.cost_usd.toFixed(4)}  Latency: ${recruiter.metrics.latency_ms} ms\n` +
-    `Cache: write=${recruiter.metrics.cache_creation_input_tokens} read=${recruiter.metrics.cache_read_input_tokens}\n` +
-    `Output: ${outPath}\n`,
-  );
+  const summaryLines = [
+    `\nVerdict: ${aggRes.verdict} (${aggRes.one_line})`,
+    `Recruiter: ${recruiter.verdict.decision} (${recruiter.verdict.kill_reason ?? 'no kill reason'})`,
+    `Hiring Manager: ${hm.verdict.decision} (${hm.verdict.kill_reason ?? 'no kill reason'}) depth=${hm.verdict.technical_depth_score}/5 seniority=${hm.verdict.seniority_calibration}`,
+    `Exec: ${br.verdict.decision} -- ${br.verdict.rationale ?? 'no rationale'}`,
+    `Cost: $${record.metrics.total_cost_usd.toFixed(4)}  Latency: ${record.metrics.total_latency_ms} ms`,
+    `Cache totals: write=${record.metrics.per_persona.reduce((s, p) => s + (p.cache_creation_input_tokens ?? 0), 0)} read=${record.metrics.per_persona.reduce((s, p) => s + (p.cache_read_input_tokens ?? 0), 0)}`,
+    `Output: ${outPath}`,
+    '',
+  ];
+  process.stdout.write(summaryLines.join('\n'));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
