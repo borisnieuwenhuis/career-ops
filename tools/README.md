@@ -1,14 +1,18 @@
-# tools/evaluate-panel (Path B walking skeleton)
+# tools/evaluate-panel
 
-A standalone Anthropic-SDK harness that runs Block H (the hiring-panel simulation) against an evaluation report. This directory stays on the `feat/path-b-evaluate-panel-harness` branch of the fork. It is NOT for upstream santifer/career-ops.
+A standalone Anthropic-SDK harness that runs Block H (the hiring-panel simulation) against an evaluation report. Three persona calls per run, deterministic aggregator, prompt caching, record-replay fixtures, and JSONL metrics output.
 
-## Scope (walking skeleton)
+This directory lives on the `feat/path-b-evaluate-panel-harness` branch of Boris's career-ops fork. It is NOT part of upstream santifer/career-ops.
 
-- Persona 1 (Recruiter) runs end-to-end via `@anthropic-ai/sdk` with tool-use.
-- Personas 2 (Hiring Manager) and 3 (Bar Raiser) are stubbed.
-- Input: a single report file via `--report`.
-- Output: JSONL under `tools/panel-results/` (gitignored).
-- Metrics: input/output/cache-creation/cache-read tokens, cost USD, latency ms.
+## What it does
+
+For a given evaluation report (`reports/*.md`), the harness calls Claude Sonnet 4.6 three times (one per persona), gets schema-enforced structured output via tool-use, and writes a combined verdict to JSONL:
+
+- **Recruiter (Persona 1):** 6-15 second screen. Hard filters: location, visa, YoE, salary. Output via `submit_recruiter_verdict` tool.
+- **Hiring Manager (Persona 2):** 60-120 second deep-read. Technical depth, seniority calibration, IC-vs-we voice, three probing questions. Output via `submit_hiring_manager_verdict` tool.
+- **Exec / Bar Raiser (Persona 3):** 3-5 minute bar-raiser review. Budget fit, retention risk, growth trajectory, culture flags, rationale. Output via `submit_exec_verdict` tool.
+
+A deterministic aggregator combines the three verdicts into one of: `strong_apply`, `apply`, `apply_with_caveats`, `skip`. No LLM involvement in aggregation.
 
 ## Usage
 
@@ -16,11 +20,12 @@ A standalone Anthropic-SDK harness that runs Block H (the hiring-panel simulatio
 
 Flags:
 
-- `--report <path>`        required, path to a `reports/*.md` file
-- `--model <name>`         default `claude-sonnet-4-6`
-- `--dry-run`              print the prompt and exit without calling the API
-- `--record-fixture <p>`   write raw Anthropic response JSON to `<p>` (used for test fixtures)
-- `--no-cache`             disable prompt caching (for A/B cost measurement)
+- `--report <path>`            required, path to a `reports/*.md` file
+- `--model <name>`             default `claude-sonnet-4-6`
+- `--dry-run`                  print the prompt and exit without calling the API
+- `--record-fixture <p>`       write raw Recruiter response to `<p>` (single-file, legacy)
+- `--record-fixture-dir <dir>` write raw persona responses to `<dir>/{recruiter,hiring_manager,exec}.json`
+- `--no-cache`                 disable prompt caching (for A/B cost measurement)
 - `--help`
 
 Requires `ANTHROPIC_API_KEY` in `.env` or environment.
@@ -29,61 +34,69 @@ Requires `ANTHROPIC_API_KEY` in `.env` or environment.
 
     node --test tools/test/
 
-No network. All SDK-touching tests replay from `tools/test/fixtures/*.json`.
+58 unit tests. No network. All SDK-touching tests replay from `tools/test/fixtures/panel-046/*.json`.
 
-## Recording a fixture
+## Recording fixtures
 
-When the Recruiter system prompt, user-prompt builder, or tool schema changes in a way that shifts the response shape, re-record the fixture:
+When a persona system prompt, user-prompt builder, or tool schema changes in a way that shifts the response shape, re-record the full bundle:
 
     node tools/evaluate-panel.mjs \
       --report reports/046-synthesia-2026-04-20.md \
-      --record-fixture tools/test/fixtures/recruiter-046-synthesia.json
+      --record-fixture-dir tools/test/fixtures/panel-046/
 
-Inspect the JSON, then commit. The replay test then runs offline against the new fixture.
+That writes `recruiter.json`, `hiring_manager.json`, and `exec.json`. Inspect, then commit. Replay tests run offline against the new bundle.
 
 ## Prompt caching
 
-The Recruiter persona splits its user message into two content blocks:
+Each persona call splits its user message into two content blocks:
 
-1. Cacheable prefix (`cache_control: { type: 'ephemeral' }`): system prompt, CV, static framing.
+1. Cacheable prefix (`cache_control: { type: 'ephemeral' }`): CV + static framing.
 2. Per-run tail: the specific report sections.
 
-On the first call per cacheable prefix, the prefix tokens are billed at the cache-write rate and stored (5-minute TTL). Subsequent calls that share the prefix read it at the cache-read rate (about one-tenth the cost of cache-write).
+Cache keys include the system prompt, which differs per persona, so the three personas do NOT share a cache entry. Each writes its own ~3800-token prefix on first call and reads it on subsequent calls within the 5-minute ephemeral TTL.
 
-Real walking-skeleton measurement against report 046 on Sonnet 4.6:
+Real walking-skeleton measurements on Sonnet 4.6:
 
-- First call: cache_creation_input_tokens=3768, cache_read_input_tokens=0, cost=0.024 USD.
-- Second call within 5 minutes: cache_creation_input_tokens=0, cache_read_input_tokens=3768, cost=0.011 USD (54% cheaper).
+- First full-panel call on a fresh CV: cache_write totals ~11700 tokens across three personas, cost ~0.08 to 0.10 USD.
+- Second call within 5 minutes on the same CV: cache_read totals ~11700 tokens, cost roughly one-tenth per-persona.
 
-Pass `--no-cache` to opt out for A/B comparison.
+Pass `--no-cache` to opt out for A/B cost comparison.
+
+## Real outputs
+
+Verified on two reports:
+
+- **046 Synthesia (positive control, Principal ML Platform Engineer):** `strong_apply`. All three personas pass. Exec rationale caught the Amsterdam-vs-London remote-policy nuance. Cost 0.077 USD, latency 23 seconds.
+- **047 Attio (negative control, Senior Platform Engineer):** `skip`, weakest_link `recruiter`. All three personas independently identified the same three hard blockers (location London-only, level over-leveled, comp below floor) plus K8s/Terraform technical gaps. Cost 0.100 USD, latency 33 seconds.
+
+JSONL outputs are under `tools/panel-results/` (gitignored).
 
 ## Module map
 
-- `evaluate-panel.mjs`           CLI orchestration (arg parsing, dispatch, JSONL write).
-- `lib/anthropic-client.mjs`     SDK wrapper, retries, tool-use extraction.
-- `lib/cost.mjs`                 model pricing table, `computeCost(usage, model)`.
-- `lib/metrics.mjs`              panel record shape, JSONL appender.
-- `lib/report-parser.mjs`        markdown report parser (handles multiple H1 shapes).
-- `lib/cv-loader.mjs`            reads `cv.md` via the repo-root symlink.
-- `lib/aggregator.mjs`           pure verdict combiner, stub-aware.
-- `lib/personas/recruiter.mjs`   Persona 1: system prompt, tool schema, runner.
-- `lib/personas/hiring-manager.mjs`   stub.
-- `lib/personas/bar-raiser.mjs`       stub (verdict label is `exec` per modes/oferta.md alignment).
+- `evaluate-panel.mjs`                    CLI orchestration (arg parsing, dispatch, JSONL write).
+- `lib/anthropic-client.mjs`              SDK wrapper, retries, tool-use extraction.
+- `lib/cost.mjs`                          model pricing table, `computeCost(usage, model)`.
+- `lib/metrics.mjs`                       panel record shape, JSONL appender.
+- `lib/report-parser.mjs`                 markdown report parser (handles 39 real report variants).
+- `lib/cv-loader.mjs`                     reads `cv.md` via the repo-root symlink.
+- `lib/aggregator.mjs`                    pure verdict combiner, fails loud on malformed persona output.
+- `lib/personas/recruiter.mjs`            Persona 1: 6-15 second screen, `submit_recruiter_verdict` tool.
+- `lib/personas/hiring-manager.mjs`       Persona 2: 60-120 second read, `submit_hiring_manager_verdict` tool.
+- `lib/personas/bar-raiser.mjs`           Persona 3: 3-5 minute bar-raiser review, `submit_exec_verdict` tool (tool name aligns with modes/oferta.md weakest_link label `exec`).
 
-## Not in walking skeleton (intentionally)
-
-- Batch mode across many reports.
-- `--jd <path>` raw JD override.
-- Concurrency or rate-limit management.
-- Calibration against golden dataset.
-
-See the follow-up tasks in `career-ops-data/docs/plans/2026-04-21-block-h-hiring-panel-spec.md` for the broader roadmap.
-
-## Reliability notes
+## Reliability
 
 - Retry policy: max 3 attempts on 408/409/429/500/502/503/504/529, APIConnectionError, APIConnectionTimeoutError. Never retries on user abort or 4xx other than 408/409/429. SDK built-in retries are disabled (`maxRetries: 0`) to avoid compounding.
 - The wrapper fails loudly on malformed tool-use responses (wrong `stop_reason`, missing tool block).
 - Aggregator raises explicitly when any persona verdict is missing a `decision` field, rather than defaulting to `strong_apply`.
+- CLI preflight: missing `ANTHROPIC_API_KEY`, unreadable `--report`, or malformed report all exit with code 1 and an actionable message. Only unexpected runtime errors exit with code 2.
+
+## Not in this harness (intentionally)
+
+- Batch mode across many reports.
+- `--jd <path>` raw JD override (the report currently serves as the JD surrogate).
+- Concurrency or rate-limit management across concurrent panel runs.
+- Calibration against a golden dataset (separate follow-up task, see spec).
 
 ## Regenerating results
 
