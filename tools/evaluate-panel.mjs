@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { basename, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -86,7 +86,13 @@ async function main() {
     return;
   }
 
-  const reportText = readFileSync(args.report, 'utf8');
+  let reportText;
+  try {
+    reportText = readFileSync(args.report, 'utf8');
+  } catch (err) {
+    process.stderr.write(`[evaluate-panel] Cannot read report at "${args.report}": ${err.message}\n`);
+    process.exit(1);
+  }
   const report = parseReport(reportText, args.report);
   const cv = loadCv();
 
@@ -95,6 +101,13 @@ async function main() {
     const { system, messages } = buildMessages({ cv, report, profile: null, useCache: args.useCache });
     process.stdout.write(`--- SYSTEM ---\n${system}\n\n--- MESSAGES ---\n${JSON.stringify(messages, null, 2)}\n`);
     return;
+  }
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    process.stderr.write(
+      '[evaluate-panel] ANTHROPIC_API_KEY not set. Add it to .env or export it, or run with --dry-run.\n',
+    );
+    process.exit(1);
   }
 
   const client = createClient({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -106,7 +119,10 @@ async function main() {
       model: args.model,
       useCache: args.useCache,
       onRawResponse: args.recordFixture
-        ? (resp) => writeFileSync(args.recordFixture, JSON.stringify(resp, null, 2))
+        ? (resp) => {
+            mkdirSync(dirname(args.recordFixture), { recursive: true });
+            writeFileSync(args.recordFixture, JSON.stringify(resp, null, 2));
+          }
         : undefined,
     },
   );
@@ -115,7 +131,7 @@ async function main() {
 
   const aggRes = aggregate(recruiter.verdict, hm.verdict, br.verdict);
 
-  const perPersona = [recruiter.metrics].filter(Boolean);
+  const perPersona = [recruiter.metrics, hm.metrics, br.metrics].filter(Boolean);
   const record = buildPanelRecord({
     reportPath: args.report,
     model: args.model,
@@ -128,7 +144,12 @@ async function main() {
     perPersona,
   });
 
-  const outPath = join(REPO_ROOT, 'tools', 'panel-results', basename(args.report).replace(/\.md$/, '.jsonl'));
+  const outPath = join(
+    REPO_ROOT,
+    'tools',
+    'panel-results',
+    basename(args.report).replace(/\.(md|markdown)$/i, '') + '.jsonl',
+  );
   appendJsonl(outPath, record);
 
   process.stdout.write(
