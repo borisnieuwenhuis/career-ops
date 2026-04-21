@@ -1,0 +1,70 @@
+{
+  "model": "claude-sonnet-4-6",
+  "id": "msg_01D6uFXiQtMghCrxSni9j8xh",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "tool_use",
+      "id": "toolu_011t7tLa4Rrr49w5mHvrCA24",
+      "name": "submit_recruiter_verdict",
+      "input": {
+        "decision": "pass",
+        "time_to_kill_sec": 9,
+        "matched_keywords": [
+          "Python",
+          "FastAPI",
+          "microservices",
+          "distributed systems",
+          "Elasticsearch",
+          "Redis",
+          "Kafka",
+          "PostgreSQL",
+          "observability",
+          "platform engineering",
+          "developer tooling",
+          "internal platform",
+          "scalability",
+          "reliability",
+          "backend systems",
+          "NestJS",
+          "React",
+          "TypeScript",
+          "AWS",
+          "anomaly detection",
+          "real-time data ingestion",
+          "zero-downtime migration",
+          "dark launch",
+          "pluggable framework",
+          "principal engineer"
+        ],
+        "hard_filter_status": {
+          "location": "ok",
+          "visa": "ok",
+          "yoe": "ok",
+          "salary": "ok"
+        },
+        "confidence": 4,
+        "kill_reason": null
+      },
+      "caller": {
+        "type": "direct"
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "stop_details": null,
+  "usage": {
+    "input_tokens": 2091,
+    "cache_creation_input_tokens": 3768,
+    "cache_read_input_tokens": 0,
+    "cache_creation": {
+      "ephemeral_5m_input_tokens": 3768,
+      "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 263,
+    "service_tier": "standard",
+    "inference_geo": "global"
+  }
+}
