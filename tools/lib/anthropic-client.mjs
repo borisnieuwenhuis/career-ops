@@ -1,12 +1,18 @@
-import Anthropic from '@anthropic-ai/sdk';
+import Anthropic, {
+  APIConnectionError,
+  APIUserAbortError,
+} from '@anthropic-ai/sdk';
 
 const RETRYABLE_STATUSES = new Set([408, 409, 429, 500, 502, 503, 504, 529]);
 const RETRYABLE_CODES = new Set(['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN']);
 
 function isRetryable(err) {
+  if (err instanceof APIUserAbortError) return false;
+  if (err?.name === 'APIUserAbortError') return false;
+  if (err instanceof APIConnectionError) return true;
+  if (err?.name === 'APIConnectionError' || err?.name === 'APIConnectionTimeoutError') return true;
   if (err?.status && RETRYABLE_STATUSES.has(err.status)) return true;
   if (err?.code && RETRYABLE_CODES.has(err.code)) return true;
-  if (err?.name === 'AbortError') return true;
   return false;
 }
 
@@ -18,6 +24,7 @@ export async function runWithRetry(op, { maxAttempts = 3, baseDelayMs = 500 } = 
     } catch (err) {
       lastErr = err;
       if (!isRetryable(err) || attempt === maxAttempts) throw err;
+      // TODO: honor Retry-After header when server provides one (err.headers?.get?.('retry-after'))
       const jitter = Math.random() * baseDelayMs;
       const delay = baseDelayMs * 2 ** (attempt - 1) + jitter;
       process.stderr.write(
@@ -48,7 +55,7 @@ export function createClient({ apiKey }) {
   if (!apiKey) {
     throw new Error('ANTHROPIC_API_KEY is required (set in .env or environment).');
   }
-  const sdk = new Anthropic({ apiKey });
+  const sdk = new Anthropic({ apiKey, maxRetries: 0 });
   return {
     async call(request) {
       return runWithRetry(() => sdk.messages.create(request));

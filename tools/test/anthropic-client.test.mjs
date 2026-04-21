@@ -74,3 +74,34 @@ test('runWithRetry gives up after maxAttempts', async () => {
   );
   assert.equal(calls, 3);
 });
+
+test('runWithRetry retries on APIConnectionError-shaped error (by name)', async () => {
+  let calls = 0;
+  const op = async () => {
+    calls++;
+    if (calls < 2) {
+      const e = new Error('connection reset');
+      e.name = 'APIConnectionError';
+      throw e;
+    }
+    return { ok: true };
+  };
+  const r = await runWithRetry(op, { maxAttempts: 3, baseDelayMs: 1 });
+  assert.deepEqual(r, { ok: true });
+  assert.equal(calls, 2);
+});
+
+test('runWithRetry does not retry user aborts (APIUserAbortError-shaped)', async () => {
+  let calls = 0;
+  const op = async () => {
+    calls++;
+    const e = new Error('user aborted');
+    e.name = 'APIUserAbortError';
+    throw e;
+  };
+  await assert.rejects(
+    runWithRetry(op, { maxAttempts: 3, baseDelayMs: 1 }),
+    /user aborted/,
+  );
+  assert.equal(calls, 1);
+});
