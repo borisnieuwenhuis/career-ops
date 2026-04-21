@@ -14,7 +14,7 @@ try {
 import { createClient } from './lib/anthropic-client.mjs';
 import { loadCv } from './lib/cv-loader.mjs';
 import { parseReport } from './lib/report-parser.mjs';
-import { runRecruiter } from './lib/personas/recruiter.mjs';
+import { runRecruiter, buildMessages } from './lib/personas/recruiter.mjs';
 import { runHiringManager } from './lib/personas/hiring-manager.mjs';
 import { runBarRaiser } from './lib/personas/bar-raiser.mjs';
 import { aggregate } from './lib/aggregator.mjs';
@@ -97,7 +97,6 @@ async function main() {
   const cv = loadCv();
 
   if (args.dryRun) {
-    const { buildMessages } = await import('./lib/personas/recruiter.mjs');
     const { system, messages } = buildMessages({ cv, report, profile: null, useCache: args.useCache });
     process.stdout.write(`--- SYSTEM ---\n${system}\n\n--- MESSAGES ---\n${JSON.stringify(messages, null, 2)}\n`);
     return;
