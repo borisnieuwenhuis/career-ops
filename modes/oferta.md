@@ -1,6 +1,6 @@
-# Modo: oferta — Evaluación Completa A-G
+# Modo: oferta — Evaluación Completa A-H
 
-Cuando el candidato pega una oferta (texto o URL), entregar SIEMPRE los 7 bloques (A-F evaluation + G legitimacy):
+Cuando el candidato pega una oferta (texto o URL), entregar SIEMPRE los 8 bloques (A-F evaluation + G legitimacy + H hiring panel simulation):
 
 ## Paso 0 — Detección de Arquetipo
 
@@ -140,6 +140,167 @@ Analyze the job posting for signals that indicate whether this is a real, active
 - **No date available:** If posting age cannot be determined and no other signals are concerning, default to "Proceed with Caution" with a note that limited data was available. NEVER default to "Suspicious" without evidence.
 - **Recruiter-sourced (no public posting):** Freshness signals unavailable. Note that active recruiter contact is itself a positive legitimacy signal.
 
+## Bloque H — Hiring Panel Simulation
+
+Simulate how three different people in the real hiring funnel would actually evaluate this candidate against this JD. Each persona reads **independently** without seeing the others' decisions. The point is to expose kill-moments the advocate-brained Block B-F analysis hides.
+
+The funnel is not symmetric. Most CVs never reach the hiring manager; most who reach the HM never reach the exec. Each persona has a distinct time budget, distinct attention model, and distinct kill criteria.
+
+### Inputs
+- The JD being evaluated (the same one Blocks A-G used)
+- `cv.md` (the candidate's CV)
+- `_profile.md` (candidate's positioning, narrative, comp targets)
+- Blocks A-F output (so each persona has the same context the real person would have — recruiter sees summary + top-half; HM sees depth; exec sees everything)
+
+### Persona 1 — Recruiter (Talent Acquisition)
+
+**Who:** Non-technical sourcer, talent partner, or in-house recruiter. In small startups this is often the People Ops person. In large companies this is a dedicated TA function.
+
+**Context:** 150-300 CVs in the funnel for one role. Doing first-pass filtering. ATS has already done a keyword-level pre-filter.
+
+**Time budget:** 6-15 seconds per CV. Scans CV top-half only (summary + top 2 roles + skill list). Rarely reads more.
+
+**Kill heuristics (in order of speed):**
+1. Location mismatch with JD stated location: kill in 1-2 sec
+2. Visa / work-authorization mismatch: kill in 2-3 sec
+3. Years-of-experience grossly off (senior role / junior CV, or overqualified): kill in ~5 sec
+4. Salary expectation outside band (only if known from prior screening): instant
+5. Zero JD-keywords visible in top-half: kill in ~8 sec
+6. Formatting / readability problems (walls of text, no metrics): goodwill drops fast, kill in 3-10 sec
+
+**Pass signals:**
+- First 50 words of summary tell a clear story
+- Core stack keywords from JD visible in opening
+- "Builder of X at scale" or "Led Y team of Z" readable in headline
+- Location / visa / availability unambiguous enough to forward
+
+**Does NOT:**
+- Read bullets deeply
+- Judge technical depth
+- Make culture-fit calls (that's the HM's job)
+
+**Produce output in this exact format:**
+
+```markdown
+### Recruiter (10-sec screen)
+- **Decision:** pass | fail
+- **Time to kill:** {1-15} sec
+- **Kill reason:** {one sentence, or "none — forwarded to HM"}
+- **Matched keywords:** [list of 3-8 JD keywords found in CV top-half]
+- **Hard filters:**
+  - Location: ok | fail
+  - Visa: ok | fail | unknown
+  - YoE: ok | fail
+  - Salary band: ok | fail | unknown
+- **Confidence:** {1-5} — how sure the recruiter is without reading deeper
+```
+
+### Persona 2 — Hiring Manager (for engineering: Engineering Manager)
+
+**Who:** The person who will directly manage the hire. Technical. Wrote or reviewed the JD. Knows exactly what they need on the team, often more specifically than the JD states.
+
+**Context:** 10-15 CVs shortlisted by the recruiter. Decides phone-screen yes/no.
+
+**Time budget:** 60-120 seconds per CV. Reads summary + top 2-3 bullets per role, scans the rest for red flags.
+
+**Kill heuristics:**
+1. "Did you write the code or click the button?" — team-voice bullets with no "I built / I designed / I shipped" language. Lost trust in ~30 sec.
+2. Title inflation — CV says Principal but bullets describe Senior IC work without architectural scope or leveraged impact. Kill in ~45 sec.
+3. Stack-depth shallow — CV lists the stack but can't find evidence of real work with it ("used Kubernetes" with no scaling / fixing / designing story). Kill in ~60 sec.
+4. Short tenures unexplained — two consecutive roles under 1 year with no context. Triggers job-hopper heuristic. Kill in ~30 sec.
+5. Metrics-free bullets — "large-scale", "mission-critical", "cutting-edge" without numbers. Kill in ~60 sec.
+6. Seniority miscalibration — clearly over-leveled (flight risk) or under-leveled (not ready).
+
+**Pass signals:**
+- Bullets in IC voice: "I designed the X", "I wrote the Y"
+- Concrete metrics: req/s, users, $ saved, p95 latency, team size
+- Architectural thinking visible: dark-launch, dual-write, zero-downtime migration, canary rollouts, feature flags
+- Adjacent-experience stories showing fast stack pickup
+- End-to-end ownership over a system, not just feature-level work
+
+**Produce output in this exact format:**
+
+```markdown
+### Hiring Manager (60-120 sec deep scan)
+- **Decision:** pass | fail
+- **Kill reason:** {one sentence, or "none — invite to phone screen"}
+- **Probing questions (what they'd ask in the phone screen):**
+  1. {specific to this CV}
+  2. {specific to this CV}
+  3. {specific to this CV}
+- **Technical depth score:** {1-5}
+- **Seniority calibration:** under_leveled | at_level | over_leveled
+- **I-vs-we ratio:** {1-5} — how often "I built" vs team-voice vs passive voice
+- **Risk flags:** [short_tenure_unexplained | title_inflation | metrics_absent | stack_depth_shallow | seniority_mismatch | ...]
+```
+
+### Persona 3 — Skip-Level / Bar Raiser / Panel Reviewer
+
+**Who:** Director, VP, Amazon-style Bar Raiser, Google-style Hiring Committee member, or in startups the CTO / founder. Sees the CV late in the process (final round debrief or calibration).
+
+**Context:** 3-5 CVs in final rounds. Their task is not "can we hire this person" but "does this person raise the bar — make the team stronger than it currently is". Hires that are merely competent cost the team over 1-2 years.
+
+**Time budget:** 3-5 minutes per CV, but with full context: interview scorecards, team composition, level-budget for the role.
+
+**Kill heuristics:**
+1. Not a bar-raiser — meets every requirement but no step-change achievement. Safe hire = regret hire in 12 months.
+2. Comp / level mismatch — candidate wants Staff+ comp, budget is Senior. Recruiter should have caught this earlier; flag now.
+3. Retention risk — trajectory suggests the candidate will outgrow the seat within 18 months. Investment wasted.
+4. Culture red flags — public GitHub/Twitter beefs, reference signal off, visible conflict history.
+5. "Wrong shape" for the seat — skills match but career arc is fundamentally off (e.g., Platform IC for a heavily product-driven team).
+
+**Pass signals:**
+- Bar-raising evidence: still-used artifacts, talks / publications / OSS, mentorship output (juniors now seniors elsewhere)
+- Growth trajectory fits the seat: logical next step, not plateau, not over-leap
+- Writing / communication quality (critical at Staff+ because influence without authority is the job)
+- External visibility: GitHub activity, blog, conference talks, recognized work
+
+**Produce output in this exact format:**
+
+```markdown
+### Skip-Level / Bar Raiser (3-5 min final read)
+- **Decision:** go | go_if_fixed | no_go
+- **Rationale:** {1-2 sentences explaining the call}
+- **Bar-raiser signal:** yes | no | maybe
+- **Budget fit:** under | at | over
+- **Retention risk:** low | medium | high
+- **Growth trajectory fit:** good | plateau | overshoot
+- **Culture flags:** [list, or "none visible"]
+```
+
+### Aggregator (deterministic, no re-reading)
+
+After all three personas produce their outputs, combine them using **this exact logic** (do not add LLM reasoning here — the whole point is that the personas already did the reasoning):
+
+- If Recruiter `decision = fail` → verdict = `skip`, weakest_link = `recruiter`
+- Else if Hiring Manager `decision = fail` → verdict = `apply_with_caveats`, weakest_link = `hiring_manager`
+- Else if Exec `decision = no_go` → verdict = `apply`, weakest_link = `exec` (note: this is an application worth making but prepare for final-round pushback)
+- Else if Exec `decision = go_if_fixed` → verdict = `apply`, weakest_link = `exec`, include fix checklist
+- Else (all three pass) → verdict = `strong_apply`, weakest_link = null
+
+**Produce aggregate output in this exact format:**
+
+```markdown
+### Panel Verdict
+- **Verdict:** strong_apply | apply | apply_with_caveats | skip
+- **One-liner:** {one sentence capturing the overall panel read}
+- **Weakest link:** recruiter | hiring_manager | exec | none
+- **Fix checklist** (only if verdict is `apply_with_caveats` or if exec said `go_if_fixed`):
+  - {specific actionable fix derived from the kill_reason / risk_flags / rationale above}
+  - {another fix, if applicable}
+```
+
+### Calibration notes (for future PRs, not required in output)
+
+This block is calibrated against the user's own `reports/*.md` history. If enough reports exist (N≥10), a `tools/evaluate-panel.mjs` harness can compare simulated verdicts against real outcomes (ghosted / phone_screen / onsite / offer / rejected_at_stage). Tune the persona heuristics until agreement ≥70%. This harness is out-of-scope for this block; see issue #384 follow-ups.
+
+### Edge cases
+
+- **Missing hard-filter data in CV** (e.g., no location listed): mark the filter as `unknown` and explain in the kill_reason. Do not default to `fail`.
+- **Vague JD:** the HM persona should probe harder — more `probing_questions` targeting the ambiguity.
+- **Comp not disclosed in JD:** the Exec persona infers `budget_fit` from role + level + geography + company stage. Flag "inferred" in the rationale.
+- **Recruiter-sourced roles (no public posting):** skip the Recruiter persona entirely; note "bypassed — direct recruiter contact" and start from the HM. Bar Raiser still applies.
+
 ---
 
 ## Post-evaluación
@@ -188,7 +349,10 @@ Guardar evaluación completa en `reports/{###}-{company-slug}-{YYYY-MM-DD}.md`.
 ## G) Posting Legitimacy
 (contenido completo del bloque G)
 
-## H) Draft Application Answers
+## H) Hiring Panel Simulation
+(contenido completo del bloque H — three persona outputs + aggregate verdict)
+
+## I) Draft Application Answers
 (solo si score >= 4.5 — borradores de respuestas para el formulario de aplicación)
 
 ---
