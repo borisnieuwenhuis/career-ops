@@ -1,8 +1,9 @@
-const SEPARATOR_CLASS = '[\\u2014\\u2013-]';
-const NUM_PREFIX_RX = new RegExp(`^\\s*\\d+\\s*${SEPARATOR_CLASS}\\s*`);
-const TITLE_SEP_RX = new RegExp(`\\s${SEPARATOR_CLASS}\\s`, 'g');
+const SIGNIFICANT_SEP_CHARS = String.fromCharCode(0x2014, 0x2013, 0x00b7);
+const SIGNIFICANT_SEP_SOURCE = `\\s(?:--|[${SIGNIFICANT_SEP_CHARS}])\\s`;
+const ANY_SEP_CLASS = `[${SIGNIFICANT_SEP_CHARS}-]`;
+const NUM_PREFIX_RX = new RegExp(`^\\s*\\d+\\s*(?:--|${ANY_SEP_CLASS})\\s*`);
 const SECTION_RX = new RegExp(
-  `^##\\s+(?:Block\\s+|Bloque\\s+)?([A-H])[\\s)${SEPARATOR_CLASS.slice(1, -1)}][^\\n]*\\n([\\s\\S]*?)(?=^##\\s+(?:Block\\s+|Bloque\\s+)?[A-H][\\s)${SEPARATOR_CLASS.slice(1, -1)}]|$(?![\\s\\S]))`,
+  `^##\\s+(?:Block\\s+|Bloque\\s+)?([A-H])[\\s)${SIGNIFICANT_SEP_CHARS}-][^\\n]*\\n([\\s\\S]*?)(?=^##\\s+(?:Block\\s+|Bloque\\s+)?[A-H][\\s)${SIGNIFICANT_SEP_CHARS}-]|$(?![\\s\\S]))`,
   'gm',
 );
 
@@ -30,16 +31,20 @@ function parseTitle(titleLine, sourcePath) {
     }
   }
 
-  const parts = stripped.split(TITLE_SEP_RX).map((p) => p.trim()).filter(Boolean);
-  if (parts.length >= 2) {
-    const company = parts[parts.length - 2];
-    const role = parts[parts.length - 1];
+  const firstSig = new RegExp(SIGNIFICANT_SEP_SOURCE).exec(stripped);
+  if (firstSig) {
+    const company = stripped.slice(0, firstSig.index).trim();
+    const role = stripped.slice(firstSig.index + firstSig[0].length).trim();
     if (company && role) {
       return { company, role };
     }
   }
 
-  throw new Error(`Could not parse report title "${titleLine}" in ${sourcePath}`);
+  throw new Error(
+    `Could not parse identity from report "${sourcePath}". ` +
+      `H1 "${titleLine}" has ambiguous separators. ` +
+      `Add "**Company:** ..." and "**Role:** ..." lines to the report header to make identity explicit.`,
+  );
 }
 
 export function parseReport(text, sourcePath) {
@@ -55,16 +60,7 @@ export function parseReport(text, sourcePath) {
   if (header.company && header.role) {
     identity = { company: header.company, role: header.role };
   } else {
-    try {
-      identity = parseTitle(titleLine, sourcePath);
-    } catch (err) {
-      if (header.company || header.role) {
-        throw new Error(
-          `Could not parse report identity in ${sourcePath}: H1 "${titleLine}" is unparseable and header lacks both Company and Role`,
-        );
-      }
-      throw err;
-    }
+    identity = parseTitle(titleLine, sourcePath);
   }
 
   const sections = {};
