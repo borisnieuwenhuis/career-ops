@@ -37,7 +37,7 @@ test('bar raiser no_go yields apply', () => {
     { decision: 'no_go', rationale: 'not a bar raiser' },
   );
   assert.equal(r.verdict, 'apply');
-  assert.equal(r.weakest_link, 'bar_raiser');
+  assert.equal(r.weakest_link, 'exec');
 });
 
 test('bar raiser go_if_fixed yields apply', () => {
@@ -47,7 +47,7 @@ test('bar raiser go_if_fixed yields apply', () => {
     { decision: 'go_if_fixed', rationale: 'fix bullet X' },
   );
   assert.equal(r.verdict, 'apply');
-  assert.equal(r.weakest_link, 'bar_raiser');
+  assert.equal(r.weakest_link, 'exec');
 });
 
 test('all pass yields strong_apply', () => {
@@ -58,4 +58,29 @@ test('all pass yields strong_apply', () => {
   );
   assert.equal(r.verdict, 'strong_apply');
   assert.equal(r.weakest_link, null);
+});
+
+test('recruiter fail wins when HM also fails (first-match-wins)', () => {
+  const r = aggregate(
+    { decision: 'fail', kill_reason: 'loc' },
+    { decision: 'fail', kill_reason: 'metrics' },
+    { decision: 'no_go', rationale: 'bar' },
+  );
+  assert.equal(r.verdict, 'skip');
+  assert.equal(r.weakest_link, 'recruiter');
+});
+
+test('throws loudly when persona.decision is missing', () => {
+  assert.throws(
+    () => aggregate({}, { decision: 'pass' }, { decision: 'go' }),
+    /recruiter\.decision missing/,
+  );
+  assert.throws(
+    () => aggregate({ decision: 'pass' }, {}, { decision: 'go' }),
+    /hiring_manager\.decision missing/,
+  );
+  assert.throws(
+    () => aggregate({ decision: 'pass' }, { decision: 'pass' }, {}),
+    /exec\.decision missing/,
+  );
 });

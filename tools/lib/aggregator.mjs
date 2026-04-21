@@ -11,6 +11,17 @@ export function aggregate(recruiter, hiringManager, barRaiser) {
     };
   }
 
+  const personas = [
+    ['recruiter', recruiter],
+    ['hiring_manager', hiringManager],
+    ['exec', barRaiser],
+  ];
+  for (const [name, p] of personas) {
+    if (typeof p.decision !== 'string') {
+      throw new Error(`aggregate: ${name}.decision missing or not a string (got ${typeof p.decision})`);
+    }
+  }
+
   if (recruiter.decision === 'fail') {
     return {
       verdict: 'skip',
@@ -24,6 +35,7 @@ export function aggregate(recruiter, hiringManager, barRaiser) {
       verdict: 'apply_with_caveats',
       one_line: `HM concern: ${hiringManager.kill_reason ?? 'unspecified'}`,
       weakest_link: 'hiring_manager',
+      // TODO: populate when Personas 2/3 go live, from hiringManager.risk_flags / barRaiser.rationale
       fix_checklist: [],
     };
   }
@@ -31,7 +43,7 @@ export function aggregate(recruiter, hiringManager, barRaiser) {
     return {
       verdict: 'apply',
       one_line: `Bar raiser no-go: ${barRaiser.rationale ?? 'unspecified'}`,
-      weakest_link: 'bar_raiser',
+      weakest_link: 'exec',
       fix_checklist: [],
     };
   }
@@ -39,7 +51,8 @@ export function aggregate(recruiter, hiringManager, barRaiser) {
     return {
       verdict: 'apply',
       one_line: `Bar raiser conditional: ${barRaiser.rationale ?? 'unspecified'}`,
-      weakest_link: 'bar_raiser',
+      weakest_link: 'exec',
+      // TODO: populate when Personas 2/3 go live, from hiringManager.risk_flags / barRaiser.rationale
       fix_checklist: [],
     };
   }
